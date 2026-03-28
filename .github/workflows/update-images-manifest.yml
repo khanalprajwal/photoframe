@@ -1,0 +1,58 @@
+name: Update image manifest
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "images/**"
+      - ".github/workflows/update-images-manifest.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-manifest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate images.json from images folder
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path('.')
+          images_dir = root / 'images'
+          exts = {'.jpg', '.jpeg', '.png', '.webp', '.gif', '.avif'}
+
+          items = []
+          if images_dir.exists():
+            for p in sorted(images_dir.rglob('*')):
+              if p.is_file() and p.suffix.lower() in exts:
+                rel = p.relative_to(root).as_posix()
+                items.append(rel)
+
+          payload = {"images": items}
+          (root / 'images.json').write_text(json.dumps(payload, indent=2) + '\n', encoding='utf-8')
+          print(f'Wrote images.json with {len(items)} entries')
+          PY
+
+      - name: Commit manifest if changed
+        shell: bash
+        run: |
+          if git diff --quiet -- images.json; then
+            echo "No manifest changes"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add images.json
+          git commit -m "chore: update images manifest"
+          git push
