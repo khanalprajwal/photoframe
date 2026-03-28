@@ -217,8 +217,19 @@ function shuffle(list) {
 function fetchWithTimeout(url, timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { signal: controller.signal })
+  return fetch(url, { signal: controller.signal, cache: "no-cache" })
     .finally(() => clearTimeout(timer));
+}
+
+async function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+
+  try {
+    const reg = await navigator.serviceWorker.register("./service-worker.js");
+    console.log("Service worker registered:", reg.scope);
+  } catch (err) {
+    console.warn("Service worker registration failed:", err);
+  }
 }
 
 function preloadImage(url) {
@@ -235,7 +246,7 @@ async function fetchImages() {
   isRefreshing = true;
 
   try {
-    const res = await fetchWithTimeout(`${IMAGE_MANIFEST_URL}?t=${Date.now()}`, FETCH_TIMEOUT_MS);
+    const res = await fetchWithTimeout(IMAGE_MANIFEST_URL, FETCH_TIMEOUT_MS);
     if (!res.ok) {
       throw new Error(`Manifest request failed: ${res.status}`);
     }
@@ -295,6 +306,7 @@ async function showNext() {
 }
 
 async function start() {
+  await registerServiceWorker();
   applyClockSettings();
   updateClock();
   setInterval(updateClock, 1000);
