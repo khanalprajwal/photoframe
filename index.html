@@ -3,6 +3,8 @@
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
+  @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;700&display=swap');
+
   body { margin: 0; background: black; overflow: hidden; }
   img {
     position: absolute;
@@ -48,15 +50,68 @@
     top: 12px;
     right: 12px;
     z-index: 98;
-    padding: 6px 10px;
-    border-radius: 8px;
-    font-family: Arial, sans-serif;
-    font-size: 18px;
-    letter-spacing: 0.4px;
-    color: rgba(255, 255, 255, 0.92);
-    background: rgba(0, 0, 0, 0.28);
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+    min-width: 170px;
+    padding: 10px 12px 9px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: linear-gradient(
+      135deg,
+      rgba(24, 24, 24, 0.55),
+      rgba(0, 0, 0, 0.34)
+    );
+    backdrop-filter: blur(3px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
     pointer-events: none;
+  }
+  #clock.pos-top-right {
+    top: 12px;
+    right: 12px;
+    bottom: auto;
+    left: auto;
+  }
+  #clock.pos-bottom-right {
+    top: auto;
+    right: 12px;
+    bottom: 12px;
+    left: auto;
+  }
+  #clock.no-glass {
+    background: rgba(0, 0, 0, 0.42);
+    backdrop-filter: none;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+  }
+  #clock-time {
+    display: block;
+    font-family: "Manrope", "Segoe UI", sans-serif;
+    font-size: 31px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.3px;
+    color: rgba(255, 255, 255, 0.96);
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
+  }
+  #clock-date {
+    display: block;
+    margin-top: 5px;
+    font-family: "Manrope", "Segoe UI", sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.84);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+  }
+  @media (max-width: 640px) {
+    #clock {
+      min-width: 148px;
+      padding: 9px 10px 8px;
+    }
+    #clock-time {
+      font-size: 26px;
+    }
+    #clock-date {
+      font-size: 11px;
+    }
   }
 </style>
 </head>
@@ -65,10 +120,19 @@
 <img id="img1">
 <img id="img2" style="opacity:0">
 <div id="status" aria-live="polite"></div>
-<div id="clock" aria-label="Current time"></div>
+<div id="clock" aria-label="Current date and time">
+  <span id="clock-time"></span>
+  <span id="clock-date"></span>
+</div>
 
 <script>
 const IMAGE_MANIFEST_URL = "./images.json";
+
+const SETTINGS = {
+  clockPosition: "top-right", // "top-right" or "bottom-right"
+  clock24h: false,
+  clockGlassEffect: true
+};
 
 const SLIDE_MS = 8000;
 const REFRESH_MS = 30 * 60 * 1000;
@@ -87,6 +151,23 @@ const img1 = document.getElementById("img1");
 const img2 = document.getElementById("img2");
 const statusEl = document.getElementById("status");
 const clockEl = document.getElementById("clock");
+const clockTimeEl = document.getElementById("clock-time");
+const clockDateEl = document.getElementById("clock-date");
+
+function applyClockSettings() {
+  if (!clockEl) return;
+
+  const positionClass = SETTINGS.clockPosition === "bottom-right"
+    ? "pos-bottom-right"
+    : "pos-top-right";
+
+  clockEl.classList.remove("pos-top-right", "pos-bottom-right", "no-glass");
+  clockEl.classList.add(positionClass);
+
+  if (!SETTINGS.clockGlassEffect) {
+    clockEl.classList.add("no-glass");
+  }
+}
 
 function setStatus(message, tone = "ok", persist = false) {
   if (!statusEl) return;
@@ -108,7 +189,7 @@ function setStatus(message, tone = "ok", persist = false) {
 }
 
 function updateClock() {
-  if (!clockEl) return;
+  if (!clockEl || !clockTimeEl || !clockDateEl) return;
   const now = new Date();
   const dateText = now.toLocaleDateString([], {
     weekday: "short",
@@ -118,9 +199,10 @@ function updateClock() {
   const timeText = now.toLocaleTimeString([], {
     hour: "numeric",
     minute: "2-digit",
-    hour12: true
+    hour12: !SETTINGS.clock24h
   });
-  clockEl.textContent = `${dateText}  ${timeText}`;
+  clockTimeEl.textContent = timeText;
+  clockDateEl.textContent = dateText;
 }
 
 function shuffle(list) {
@@ -213,6 +295,7 @@ async function showNext() {
 }
 
 async function start() {
+  applyClockSettings();
   updateClock();
   setInterval(updateClock, 1000);
 
