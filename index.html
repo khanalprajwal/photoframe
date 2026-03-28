@@ -73,6 +73,7 @@ const IMAGE_MANIFEST_URL = "./images.json";
 const SLIDE_MS = 8000;
 const REFRESH_MS = 30 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 60000;
+const RANDOM_START_ON_LOAD = true;
 
 let images = [];
 let index = 0;
@@ -80,6 +81,7 @@ let showingFirst = true;
 let isRefreshing = false;
 let isTransitioning = false;
 let statusHideTimer = null;
+let didChooseInitialIndex = false;
 
 const img1 = document.getElementById("img1");
 const img2 = document.getElementById("img2");
@@ -163,7 +165,12 @@ async function fetchImages() {
 
     if (nextImages.length > 0) {
       images = shuffle(nextImages);
-      index = index % images.length;
+      if (RANDOM_START_ON_LOAD && !didChooseInitialIndex) {
+        index = Math.floor(Math.random() * images.length);
+        didChooseInitialIndex = true;
+      } else {
+        index = index % images.length;
+      }
       console.log("Loaded images:", images.length);
     } else {
       console.warn("No images found in manifest.");
