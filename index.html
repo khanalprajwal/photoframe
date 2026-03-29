@@ -147,6 +147,8 @@
 <img id="img1">
 <img id="img2" style="opacity:0">
 <div id="status" aria-live="polite"></div>
+<!-- Hidden fallback video for keeping screen awake on devices without Wake Lock API -->
+<video id="wakelock-fallback" style="display:none; width:1px; height:1px;" muted playsinline></video>
 <div id="clock" aria-label="Current date and time">
   <span id="clock-time"></span>
   <span id="clock-date"></span>
@@ -176,6 +178,8 @@ let isRefreshing = false;
 let isTransitioning = false;
 let statusHideTimer = null;
 let didChooseInitialIndex = false;
+let wakeLock = null;
+let doesSupportWakeLock = false;
 
 const img1 = document.getElementById("img1");
 const img2 = document.getElementById("img2");
@@ -250,6 +254,132 @@ function setupFullscreen() {
   document.addEventListener("fullscreenchange", updateFullscreenButtonVisibility);
   document.addEventListener("webkitfullscreenchange", updateFullscreenButtonVisibility);
   document.addEventListener("msfullscreenchange", updateFullscreenButtonVisibility);
+}
+
+async function requestWakeLock() {
+  if (!doesSupportWakeLock) return;
+
+  try {
+    wakeLock = await navigator.wakeLock.request("screen");
+    console.log("Wake lock acquired");
+    
+    wakeLock.addEventListener("release", () => {
+      console.log("Wake lock released");
+      wakeLock = null;
+    });
+  } catch (err) {
+    console.warn("Failed to acquire wake lock:", err);
+    setStatus("Keep-awake feature unavailable on this device.", "warn");
+  }
+}
+
+async function releaseWakeLock() {
+  if (wakeLock !== null) {
+    try {
+      await wakeLock.release();
+      wakeLock = null;
+    } catch (err) {
+      console.warn("Failed to release wake lock:", err);
+    }
+  }
+}
+
+function setupWakeLock() {
+  if (!("wakeLock" in navigator)) {
+    console.log("Wake Lock API not supported, using fallback");
+    setupWakeLockFallback();
+    return;
+  }
+
+  doesSupportWakeLock = true;
+  
+  requestWakeLock();
+
+  document.addEventListener("visibilitychange", async () => {
+    if (document.hidden) {
+      await releaseWakeLock();
+    } else {
+      await requestWakeLock();
+    }
+  });
+
+  document.addEventListener("fullscreenchange", async () => {
+    if (document.fullscreenElement) {
+      await requestWakeLock();
+    }
+  });
+  document.addEventListener("webkitfullscreenchange", async () => {
+    if (document.webkitFullscreenElement) {
+      await requestWakeLock();
+    }
+  });
+
+  setInterval(async () => {
+    if (!document.hidden) {
+      await requestWakeLock();
+    }
+  }, 60000);
+}
+
+function setupWakeLockFallback() {
+  const video = document.getElementById("wakelock-fallback");
+  if (!video) return;
+
+  // Create a minimal silent MP4 video data (1 second, blank)
+  const minimalMP4 = new Uint8Array([
+    0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d,
+    0x00, 0x00, 0x00, 0x00, 0x69, 0x73, 0x6f, 0x6d, 0x69, 0x73, 0x6f, 0x32,
+    0x6d, 0x70, 0x34, 0x31, 0x00, 0x00, 0x00, 0x08, 0x77, 0x69, 0x64, 0x65
+  ]);
+
+  const blob = new Blob([minimalMP4], { type: "video/mp4" });
+  const url = URL.createObjectURL(blob);
+  video.src = url;
+  video.loop = true;
+
+  let playAttempts = 0;
+  const maxAttempts = 3;
+
+  const tryPlay = async () => {
+    try {
+      const playPromise = video.play();
+      if (playPromise !== undefined) {
+        await playPromise;
+      }
+      console.log("Fallback video playing to keep screen awake");
+      setStatus("Using screen keep-awake fallback (limited support)", "warn");
+    } catch (err) {
+      playAttempts++;
+      if (playAttempts < maxAttempts) {
+        setTimeout(tryPlay, 1000);
+      } else {
+        console.warn("Could not play fallback video:", err);
+        // Final fallback: use animation loop
+        setupAnimationLoopFallback();
+      }
+    }
+  };
+
+  tryPlay();
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && video.paused) {
+      tryPlay();
+    }
+  });
+}
+
+function setupAnimationLoopFallback() {
+  console.log("Using animation loop fallback for screen keep-awake");
+  setStatus("Using minimal keep-awake (very limited support)", "warn");
+
+  let frameCount = 0;
+  function animationLoop() {
+    frameCount = (frameCount + 1) % 1000000;
+    requestAnimationFrame(animationLoop);
+  }
+
+  animationLoop();
 }
 
 function applyClockSettings() {
@@ -406,12 +536,22 @@ async function showNext() {
 async function start() {
   await registerServiceWorker();
   setupFullscreen();
+  setupWakeLock();
   applyClockSettings();
   updateClock();
   setInterval(updateClock, 1000);
 
   await fetchImages();
   await showNext();
+
+  // Auto-enter fullscreen for better screen protection
+  if (supportsFullscreenApi() && !getFullscreenElement()) {
+    setTimeout(() => {
+      requestFullscreen().catch((err) => {
+        console.log("Auto-fullscreen request failed (user may need to click):", err);
+      });
+    }, 500);
+  }
 
   setInterval(showNext, SLIDE_MS);
   setInterval(fetchImages, REFRESH_MS);
